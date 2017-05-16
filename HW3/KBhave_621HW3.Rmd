@@ -1,0 +1,791 @@
+---
+title: "621_HW3.Rmd"
+author: "Kumudini Bhave"
+date: "April 10, 2017"
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+  html_document:
+    fontsize: 35pt
+    highlight: pygments
+    theme: cerulean
+    toc: yes
+---
+
+
+
+
+\newpage
+
+# **Logistic Regression Model : Predicting Crime Rate For City Neighbourhoods**
+
+********
+
+## Summary
+
+
+This is an R Markdown document for providing documentation for performing **Binary Logistic Regression** by practising **Data Exploration, Transformation, Analysis And Modelling and Prediction Of the Crime DataSet**
+
+
+
+## Crime DataSet
+
+The Crime dataset of a major city depicts 466 observations across 14 variables for different neighbourhoods of the city.
+The response /dependant  variable is the "target" which is essentially the crime rate , whether it is above the median crime rate or not.(1 if yes and 0 if not)
+
+Predictor Variables | Definition
+------------------- | --------------------------------------------------------------
+zn | proportion of residential land zoned for large lots (over 25000 square feet)
+indus | proportion of non-retail business acres per suburb
+chas | a dummy var. for whether the suburb borders the Charles River (1) or not (0)
+nox | nitrogen oxides concentration (parts per 10 million)
+rm | average number of rooms per dwelling
+age | proportion of owner-occupied units built prior to 1940
+dis | weighted mean of distances to five Boston employment centers
+rad | index of accessibility to radial highways
+tax | full-value property-tax rate per $10,000
+ptratio | pupil-teacher ratio by town
+black | 1000(Bk - 0.63)2 where Bk is the proportion of blacks by town
+lstat | lower status of the population (percent)
+medv | median value of owner-occupied homes in $1000s
+
+
+
+
+```{r warning=FALSE, comment=FALSE, message=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=200)}
+knitr::opts_chunk$set(message = FALSE, echo=TRUE)
+
+# Library for loading CSV data
+library(RCurl)
+
+# Library for data display in tabular format
+
+#library(DT)
+library(dplyr)
+# Library for plotting
+library(ggplot2)
+library(gridExtra)
+
+library(corrplot)
+library(e1071)
+library(data.table)
+library(knitr)
+library(caret)
+library(pander)
+library(pROC)
+library(car)
+library(bestglm)
+
+```
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+# Getting data 
+
+trdata.giturl <- "https://raw.githubusercontent.com/DataDriven-MSDA/DATA621/master/HW3/crime-training-data.csv"
+
+evaldata.giturl <- "https://raw.githubusercontent.com/DataDriven-MSDA/DATA621/master/HW3/crime-evaluation-data.csv"
+
+
+
+traindataorig<-read.csv(url(trdata.giturl))
+traindata <- traindataorig
+
+evaldataorig<-read.csv(url(evaldata.giturl))
+evaldata <- evaldataorig
+
+
+#View(traindata)
+
+```
+
+
+\newpage 
+
+
+## Data Exploration
+
+Below is the summary of the predictor variables and the response variable "target" in the dataset.
+
+
+*Response Variable:*
+
+We find that the "target" response variable has 229 neighbourhoods with above median crime rate (i.e. value of 1) and 237 neighbourhoods with above median crime rate (i.e. value of 0) 
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+pander(table(traindata$target))
+pander(table(traindata$target)/sum(table(traindata$target)))
+
+```
+
+Because it is a binary response there are no outliers.
+We see that lower crime neighbourhoods and high crime neighbourhoods are pretty much equally distributed
+
+*Predictor Variables : *
+
+We have a list of Predictor variables which seem to have an impact on the response variable of "target".
+Some of them positively or negatively impacting. 12 are numeric and 1 is caterogical.
+
+Since our response variable target is a two-level factor, we can take a look at a plot of each predictor, subset by target and see the relationship between the predictor and our response variable
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+summary(traindata)
+
+znhist <- ggplot(traindata, aes(x=zn)) + geom_histogram() 
+indushist <- ggplot(traindata, aes(x=indus)) + geom_histogram() 
+noxhist <- ggplot(traindata, aes(x=nox)) + geom_histogram() 
+rmhist <- ggplot(traindata, aes(x=rm)) + geom_histogram() 
+agehist <- ggplot(traindata, aes(x=age)) + geom_histogram() 
+dishist <- ggplot(traindata, aes(x=dis)) + geom_histogram() 
+radhist <- ggplot(traindata, aes(x=rad)) + geom_histogram() 
+taxhist <- ggplot(traindata, aes(x=tax)) + geom_histogram() 
+ptratiohist <- ggplot(traindata, aes(x=ptratio)) + geom_histogram() 
+blackhist <- ggplot(traindata, aes(x=black)) + geom_histogram() 
+lstathist <- ggplot(traindata, aes(x=lstat)) + geom_histogram() 
+medvhist <- ggplot(traindata, aes(x=medv)) + geom_histogram() 
+
+
+znbox <- ggplot(traindata, aes(factor(target), zn,colour=factor(target))) + geom_boxplot() +ggtitle("zn vs Crime Rate\n")
+
+indusbox <- ggplot(traindata, aes(factor(target), indus,colour=factor(target))) + geom_boxplot() +ggtitle("indus vs Crime Rate\n")
+
+noxbox <- ggplot(traindata, aes(factor(target), nox, colour=factor(target))) + geom_boxplot() +ggtitle("nox vs Crime Rate\n")
+
+rmbox <- ggplot(traindata, aes(factor(target), rm, colour=factor(target))) + geom_boxplot() +ggtitle("rm vs Crime Rate\n")
+
+agebox <- ggplot(traindata, aes(factor(target), age, colour=factor(target))) + geom_boxplot() +ggtitle("age vs Crime Rate\n")
+
+disbox <- ggplot(traindata, aes(factor(target), dis, colour=factor(target))) + geom_boxplot() +ggtitle("dis vs Crime Rate\n")
+
+radbox <- ggplot(traindata, aes(factor(target), rad, colour=factor(target))) + geom_boxplot() +ggtitle("rad vs Crime Rate\n")
+
+taxbox <- ggplot(traindata, aes(factor(target), tax, colour=factor(target))) + geom_boxplot() +ggtitle("tax vs Crime Rate\n")
+
+ptratiobox <- ggplot(traindata, aes(factor(target), ptratio, colour=factor(target))) + geom_boxplot() +ggtitle("ptratio vs Crime Rate\n")
+
+blackbox <- ggplot(traindata, aes(factor(target), black, colour=factor(target))) + geom_boxplot() +ggtitle("black vs Crime Rate\n")
+
+lstatbox <- ggplot(traindata, aes(factor(target), lstat, colour=factor(target))) + geom_boxplot() +ggtitle("lstat vs Crime Rate\n")
+
+medvbox <- ggplot(traindata, aes(factor(target), medv, colour=factor(target))) + geom_boxplot() +ggtitle("mdev vs Crime Rate\n")
+
+
+
+znden <- ggplot(traindata, aes(x = zn)) + geom_density() 
+indusden <- ggplot(traindata, aes(x = indus)) + geom_density()
+noxden <- ggplot(traindata, aes(x = nox)) + geom_density() 
+rmden <- ggplot(traindata, aes(x = rm)) + geom_density() 
+ageden <- ggplot(traindata, aes(x = age)) + geom_density() 
+disden <- ggplot(traindata, aes(x = dis)) + geom_density() 
+radden <- ggplot(traindata, aes(x = rad)) + geom_density() 
+taxden <- ggplot(traindata, aes(x = tax)) + geom_density() 
+ptratioden <- ggplot(traindata, aes(x = ptratio)) + geom_density() 
+
+blackden <- ggplot(traindata, aes(x = black)) + geom_density() 
+lstatden <- ggplot(traindata, aes(x = lstat)) + geom_density() 
+medvden <- ggplot(traindata, aes(x = medv)) + geom_density() 
+
+
+
+grid.arrange(znhist,znbox,znden,indushist,indusbox,indusden,noxhist,noxbox,noxden,ncol=3,nrow=3)
+grid.arrange(rmhist,rmbox,rmden,agehist,agebox,ageden,dishist,disbox,disden,ncol=3,nrow=3)
+grid.arrange(radhist,radbox,radden,taxhist,taxbox,taxden,ptratiohist,ptratiobox,ptratioden,ncol=3,nrow=3)
+grid.arrange(blackhist,blackbox,blackden,lstathist,lstatbox,lstatden,medvhist,medvbox,medvden, ncol=3,nrow=3)
+
+
+
+```
+
+
+
+
+
+There are no missing values and the dataset is overall ok. Apart from skewness in few predictor variable, the data does not seem to be out of norm.
+
+From the above plots , we find that the proportion of buildings built before 1940 , denoted by predictor variable "age",is pretty left skewed shows a high skew in higher crime neighbourhood . 
+
+We find similar left skewness in the number of "black" in the neighbourhood for both low and high crime neighbourhoods.
+
+Also the weighted mean distance to Boston employment centre, "dis", is right skewed
+"zn", proportion for residential land zoned for large lots is also severely right skewed
+
+
+\newpage 
+
+
+
+## Data Preparation
+
+
+Since the "target" response variable and "chas" predictor variables are binary, we factor them
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+#convert chas (suburb borders the Charles river), it being a binary variable into a factor
+traindata$chas <- factor(traindata$chas)
+evaldata$chas <- factor(evaldata$chas)
+
+
+
+```
+
+
+
+Since there are no missing values, we don't have to do any imputations.
+
+
+For "zn" , since more than 70% of the on observations have no residential land zoned for large lots, we opt to categorize "zn" into buckets of neighbourhoods with large lots zoning (values of zn >5 ) and no/less lots zoning (zn < = 5).
+
+We add a new variable *znnew* which is categorical that has value of 1 for "zn" > 5 and value of 0 for "zn" <=5
+
+
+Overall , we find that the predictor variables, "zn", "nox" (nitrogen oxide concentrations),"age", "dis" (distance rom employment centr), "bleack" appear to be important in prediction of the crime rate. We also see "tax", "rad" (access to highway).
+We would need to explore this further and handle the multicollinearity among the predictor variables if any.
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+#convert chas (suburb borders the Charles river), it being a binary variable into a factor
+
+traindata$znnew <- ifelse(traindata$zn > 5, 1, 0)
+traindata$znnew <- as.factor(traindata$znnew)
+
+# bucket the "zn" variable
+tzn <- as.data.frame(table(znnew=traindata$znnew, Target=traindata$target))
+kable(tzn, align='c')
+
+```
+
+
+
+********
+
+** Correlation Matrix**
+
+
+Using the original predictor variables to find their correlation with the response variable, we have the following correlation plot.
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+
+cormat<-as.matrix(cor(traindataorig, use = "pairwise.complete.obs"))
+corrplot(cormat,  method="color", tl.cex=0.7, addCoef.col = "black", addCoefasPercent = TRUE)
+
+```
+
+
+
+
+
+**From the Correlation Matrix :**
+
+We do see some correlation , among variables such as "indus" the industrialization negative effect on the median value of homes "medv".
+
+Likewise, the industrialization and nitrogen oxide levels show a strong positive correlation.
+
+
+We observe that the nitrogen oxide also has a positive correlation with the crime rate and the "rad" which is radial highways accessibility and negatively correlated to "medv" median value of home, depicting that the industrialization and high traffic areas lead to potential high nitrogen oxide emissions which can further lead to lower values of real estate and thus an increase in the crime rate
+
+We find that the "dis" which is distance to employment centres  is negatively correlated to crime rate. This is intuitive because employment centres are likely to be in areas of high unemployment which is also correlated to high crime rate.
+Some of these predictors appear to be correlated like industrailization and access to highway, similarly tax and indusrialization also have strong correlation. 
+
+
+We explore by checking some transformations for  the skewed predictor variables like "age", "black", "nox",
+"indus". 
+Through the trials, We do a logarithm transformation for the age , black and nox and a sqrt transformation for the indus and check if their correlation to the response variable "target" betters with the transformations.
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+log_age_cor <- cor(traindata$target, log(traindata$age))
+log_age_cor
+
+log_black_cor <- cor(traindata$target, log(traindata$black))
+log_black_cor
+
+log_nox_cor <- cor(traindata$target, log(traindata$nox))
+log_nox_cor
+
+sqrt_indus_cor <- cor(traindata$target, sqrt(traindata$indus))
+sqrt_indus_cor
+
+
+```
+
+After performing trials for different transformations for handling the skewness for certain predictor variable, we find that the log(age) and log(black) do not add much significance to the correlation so we leave them as it is .
+
+However we do see that the log(nox) and the square root of  "indus" does make a slight impact and betters the correlation with the target crime rate.
+
+We will further see how these really impact the target in our models.
+We add the log transformations to "nox" and square root transformation to "indus" predictor variables
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+
+traindata$lognox<- log(traindata$nox)
+
+traindata$sqrtindus<- sqrt(traindata$nox)
+
+#View(traindata)
+```
+
+
+\newpage 
+
+
+## Building The Models
+
+Now that the response and predictor variables have been studies, we further proceed by constructing different models. 
+We will initiate with first all the variables along with the newly added "znnew", and log(nox), sqrt(indus).
+
+Also to crossvalidate the models constructed, we verify it with splitting the train data into 70:30 ratio by randomly selecting the observation data for further analysis of models (since evaluation data lacks the target response variable)
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+set.seed(41)
+randomobs <- sample(seq_len(nrow(traindata)), size = floor(0.7 * nrow(traindata)))
+
+trainnew <- traindata[randomobs,]
+testnew <- traindata[-randomobs,]
+
+```
+
+
+
+
+### Model 1 : Full model with transformed predictor variables
+
+As our first model, we construct this using all predictor variables and also include the "znnew" (categorized residential zoned lots) and "lognox" which is log(nox) (nitroden oxide concentrations) and the "sqrtindus" , which is sqrt(indus) (non-retail businees acres / industrial ).
+In logistic regression we expect this model to have the highest predictive capacity.
+
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+#View(trainnew)
+model1 <- glm(target ~ . , family=binomial(link="logit"), data = trainnew)
+
+summary(model1)
+
+
+model1.probtest <- predict(model1, newdata = testnew, type="response")
+model1.predtest <- ifelse(model1.probtest > 0.5, 1 ,0)
+
+# Confusion Matrix For Model 1
+     
+model1.cfmat <- confusionMatrix(data=model1.predtest, reference = as.factor(testnew$target), positive = "1")
+
+
+model1cf_p1 <- as.data.frame(model1.cfmat$overall)
+model1cf_p2 <- as.data.frame(model1.cfmat$byClass)
+colnames(model1cf_p1) <- 'Model1'
+colnames(model1cf_p2) <- 'Model1'
+
+model1cf_p <- rbind(model1cf_p1, model1cf_p2)
+
+coefficients(model1)
+exp(model1$coefficients)
+
+# Finding Log Likelihoos, AIC and BIC
+
+loglikm1 <- logLik(model1)
+aicm1 <- AIC(model1)
+bicm1 <- BIC(model1)
+
+```
+
+
+From the summary, we find that the "nox" (nitrogen oxide concentrations in environment) has quite a high positive effect on the crime rate of neighbourhood, with high levels of nox denoting high crime rate.
+
+We do see that some of the variables like "chas" are not showing any significance.
+The "dis" (distance form employment centres) and "rad" (access to highways) seem to have some signigicance. We also see tax as a significant predictor.
+
+Overall this model has **0.900 accurancy and 166.1 AIC** .
+The **area under curve is 0.97133** which is pretty good.
+**Classification Error Rate : 0.1**
+
+We do find some predictors with very less significance 
+We will further work with newer reduced models by removing the less significant predictors and observe the changes.
+
+**Plotting the ROC curve for Model 1**
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+model1roc <- roc(target ~ model1.probtest, data = testnew)
+aucmodel1 <- round(auc(model1roc), 6)
+
+par(mfrow=c(1,2))
+
+pander(ftable(model1.cfmat$table))
+
+plot(model1roc, legacy_axes =TRUE, col="blue", main = paste0("Model 1 ROC","\n","AUC : ", aucmodel1))
+
+```
+
+**********
+
+### Model 2 : Bayesian Information Criterion
+
+We create this model with the Bayesian Information Criterion (BIC) to determine the number of predictors to use and which predictors should be used. We use the original observation without the new added transformations
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+#bictrain <- dplyr::select(trainnew, -lognox,-sqrtindus,-znnew)
+
+
+regfit.full <- regsubsets(factor(target) ~ . -znnew-lognox-sqrtindus, data=trainnew)
+reg.summary<-summary(regfit.full)
+
+par(mfrow=c(1,2))
+
+plot(reg.summary$bic, xlab="Number of Predictors", ylab="BIC", type="l", main="Subset Selection Using BIC")
+
+plot(regfit.full)
+
+
+
+```
+
+
+From the plots we find the 3 predictors that minimize BIC are the "nox", "age" , and "rad" and heance we create a model with these 3 variables.
+
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+model2 <- glm(target ~ nox + age + rad , family=binomial, data = trainnew)
+
+summary(model2)
+
+
+model2.probtest <- predict(model2, newdata = testnew, type="response")
+model2.predtest <- ifelse(model2.probtest > 0.5, 1 ,0)
+
+# Confusion Matrix For Model 2
+     
+model2.cfmat <- confusionMatrix(data=model2.predtest, reference = as.factor(testnew$target), positive = "1")
+
+model2cf_p1 <- as.data.frame(model2.cfmat$overall)
+model2cf_p2 <- as.data.frame(model2.cfmat$byClass)
+colnames(model2cf_p1) <- 'Model2'
+colnames(model2cf_p2) <- 'Model2'
+
+model2cf_p <- rbind(model2cf_p1, model2cf_p2)
+
+# Finding Log Likelihoos, AIC and BIC
+
+loglikm2 <- logLik(model2)
+aicm2 <- AIC(model2)
+bicm2 <- BIC(model2)
+
+```
+
+
+We observe that "nox" , the nitrogen oxide concentrations have the strongest impact as per the coefficients depicted by this model. Also "nox" is statistically significant , as is "rad",  access to highways.
+
+We dont see "age" having so much of an impact and is statistically hardly significant.
+
+
+Overall this model has **0.8642 accurancy** and **174.55 AIC .**
+The **area under curve is 0.95679** which is pretty good.
+**Classification Error Rate : 0.1357**
+
+
+**Plotting the ROC curve for Model 2**
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+model2roc <- roc(target ~ model2.probtest, data = testnew)
+aucmodel2 <- round(auc(model2roc), 6)
+
+par(mfrow=c(1,2))
+
+pander(ftable(model2.cfmat$table))
+
+plot(model2roc, legacy_axes =TRUE, col="blue", main = paste0("Model 2 ROC","\n","AUC : ", aucmodel2))
+
+```
+
+
+
+**********
+
+
+
+### Model 3 : Bayesian Information Criterion with Transformations
+
+We construct this model based on the same BIC selection from Model 2 but with the transformations of applicable variables done earlier instead of the original predictor variables.
+
+Based on the distributions, the log of "nox" has been used
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+
+model3 <- glm(target ~ lognox + age + rad , family=binomial, data = trainnew)
+
+summary(model3)
+
+
+model3.probtest <- predict(model3, newdata = testnew, type="response")
+model3.predtest <- ifelse(model3.probtest > 0.5, 1 ,0)
+
+
+# Confusion Matrix For Model 3
+     
+model3.cfmat <- confusionMatrix(data=model3.predtest, reference = as.factor(testnew$target), positive = "1")
+
+
+model3cf_p1 <- as.data.frame(model3.cfmat$overall)
+model3cf_p2 <- as.data.frame(model3.cfmat$byClass)
+colnames(model3cf_p1) <- 'Model3'
+colnames(model3cf_p2) <- 'Model3'
+
+model3cf_p <- rbind(model3cf_p1, model3cf_p2)
+
+# Finding Log Likelihoos, AIC and BIC
+
+loglikm3 <- logLik(model3)
+aicm3 <- AIC(model3)
+bicm3 <- BIC(model3)
+
+
+```
+
+The coefficient associated with nitrogen oxide concentration has decreased in value bus still shows high impact and statistically significant. There is a very slight increase in the "rad" coefficient, however the "age" seems to be as depicted in earlier model, less significant.
+
+
+Overall this model has **0.8642 accuracy and 173.55 AIC** which is an improvement over the earlier Model 2.
+The **area under curve is 0.95761.**
+**Classification Error Rate : 0.1357** i.e it is same as Model 2
+
+
+**Plotting the ROC curve for Model 3**
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+model3roc <- roc(target ~ model3.probtest, data = testnew)
+aucmodel3 <- round(auc(model3roc), 6)
+
+par(mfrow=c(1,2))
+pander(ftable(model3.cfmat$table))
+
+plot(model3roc, legacy_axes =TRUE, col="blue", main = paste0("Model 3 ROC","\n","AUC : ", aucmodel3))
+
+```
+
+
+
+**********
+
+
+
+
+
+### Model 4 : Reduced model without transformed predictor variables
+
+As our first model, we construct this using the significant predictor variables and also get rid of the new transformed "znnew" (categorized residential zoned lots) and "lognox" which is log(nox) (nitroden oxide concentrations) and the "sqrtindus" , which is sqrt(indus) (non-retail businees acres / industrial )
+
+Deriving from the Model 1 and correlation matrix, we remove the "rm" variable as it does not seem to be affecting target so much. Also working backwards, we remove the "chas",black" and "zn" as their significance seems to be pretty less (they have high p -values)
+
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+
+model4 <- glm(target ~ . -znnew-lognox-sqrtindus-rm-zn-black-chas , family=binomial(link="logit"), data = trainnew)
+
+summary(model4)
+
+```
+
+
+We further update the model to get rid of the "lstat" (lower status of population ) and "medv" (median home values) and industrialization "indus" predictor variables.
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+model41 <- update(model4, .~. -lstat-medv-indus)
+summary(model41)
+
+model42 <- update(model41, .~. -age-dis)
+summary(model42)
+
+```
+
+We now have the most significant predictor variables , "nox", "rad", "tax", "ptratio" in the model. And we proceed with these to analyze further.
+
+Although the tax has a negative impact on the target, and is statistically significant, the coeefficient details that there is only 0.01 unit decrease in crime rate with every 1 unit increase in tax.
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+model4 <- model42
+
+model4.probtest <- predict(model4, newdata = testnew, type="response")
+model4.predtest <- ifelse(model4.probtest > 0.5, 1 ,0)
+
+# Confusion Matrix For Model 1
+     
+model4.cfmat <- confusionMatrix(data=model4.predtest, reference = as.factor(testnew$target), positive = "1")
+
+
+model4cf_p1 <- as.data.frame(model4.cfmat$overall)
+model4cf_p2 <- as.data.frame(model4.cfmat$byClass)
+colnames(model4cf_p1) <- 'Model4'
+colnames(model4cf_p2) <- 'Model4'
+
+model4cf_p <- rbind(model4cf_p1, model4cf_p2)
+
+# Finding Log Likelihoos, AIC and BIC
+
+loglikm4 <- logLik(model4)
+aicm4 <- AIC(model4)
+bicm4<- BIC(model4)
+
+
+```
+
+
+Overall this model has **0.8714 accurancy and 159.31 AIC** which is an improvement over the earlier Model 2 and Model 1 respectively.
+The **area under curve is 0.95833**
+**Classification Error Rate : 0.128** which is lesser compared to Model 2 and Model 3.
+
+**Plotting the ROC curve for Model 4**
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+model4roc <- roc(target ~ model4.probtest, data = testnew)
+aucmodel4 <- round(auc(model4roc), 6)
+
+par(mfrow=c(1,2))
+pander(model4.cfmat$table)
+
+plot(model4roc, legacy_axes =TRUE, col="blue", main = paste0("Model 4 ROC","\n","AUC : ", aucmodel4))
+
+```
+
+
+
+
+********
+
+
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+
+#trainnewbestglm <- dplyr::select(trainnew, -c(znnew,lognox,sqrtindus))
+
+#model5 <- bestglm(trainnewbestglm, IC= "BIC", family = binomial)
+
+#summary(model5$BestModel)
+
+
+#bestglm model slow 
+```
+
+
+\newpage 
+
+
+## Model Selection
+
+
+From the four models derived above, we look at the performance of each of these through cross validation,  with respect to the Accuracy, Area Under Curve, Log likelihood, the AIC( Akaike Information Criterion) and BIC. We compare the Sensitiviy, Specificity
+
+
+**Confusion Matrix Metrics For All Models**
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+
+cfmatmetricsdf <- cbind(model1cf_p,model2cf_p,model3cf_p,model4cf_p)
+kable(cfmatmetricsdf,caption='Confusion Matrix Metrics For All Models')
+
+```
+
+
+
+**Area Under Curve Comparison For All Models**
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+vif(model4)
+
+AUCAll <- rbind(aucmodel1,aucmodel2,aucmodel3,aucmodel4)
+
+LogLikAll <- rbind(loglikm1, loglikm2, loglikm3, loglikm4) %>% round(2)
+
+
+AICAll <- rbind(aicm1, aicm2, aicm3, aicm4) %>% round(2)
+
+
+BICAll <- rbind(bicm1, bicm2, bicm3, bicm4) %>% round(2)
+
+
+comptable <- cbind(AUCAll,LogLikAll,AICAll,BICAll)
+
+rownames(comptable) <- c("Model 1", "Model 2", "Model 3", "Model 4")
+colnames(comptable) <- c("Area Under Curve","Log Likelihood", "AIC", "BIC")
+
+pander(comptable,caption = 'Model Comparison: AUC / Log Likelihood / AIC / BIC')
+```
+
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+vif(model4)
+
+```
+
+We did see a lot of Multicollinearity in Model 1, this has been taken care though in Model 2, 3, 4
+The accuracy of Model 1 although pretty good at 90% , Model 4 close to it at 87%.
+Model 1 also has a higher Area under curve as compared to Model 4.
+
+Model 2 and Model 3 are pretty good in handling the multicollinearity issues, however the Accuracy and Are under curve as compared ot Model 4 is still less.
+
+ While Specificity is similar for all models , Model 1 excel in Sensitivty, followed by Model 4. Model 1 also is better is Classification Error rate , it has the least compared to all the other models. And better F1 score.
+
+Model 4 seems to be the Model to go ahead with as it is good at the muilticollinearity with
+ Variance Inflation Factors analyzed , all predictor score below 4 , which proves it. Also the Residual Deviance is least for Model 4.
+Also , as compared to all models and especially with Model 1,  it has the lowest AIC and BIC and high log likelihood. Also it is parsimonous with a decent Accuracy, AUC, F1 score, predictive power. 
+ 
+*Reference : (https://www.analyticsvidhya.com/blog/2015/11/beginners-guide-on-logistic-regression-in-r/)*
+
+
+\newpage 
+ 
+ 
+
+## Predictions on Evaluation Data
+
+We now use this Model 4 for predicting the crime evaluation dataset.
+
+```{r tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+
+pred_evaldata <- predict(model4, newdata=evaldata, type='response')
+pred_evaldata_target <- ifelse(pred_evaldata > 0.5, 1, 0)
+evaldata$target <- pred_evaldata_target
+
+pander(table(evaldata$target))
+pander(table(evaldata$target)/sum(table(traindata$target)))
+
+
+write.csv(evaldata, 'predicted_crime_evaluation.csv')
+#View(evaldata)
+
+```
+
+We find that after applying our Model 4 to evaluation crime data, the predicted values for crime neighbourhoods is 20 for low crime (valued 0) and 20 for high crime (valued 1).
+The results of the predicted values are stored in new file *predicted_crime_evaluation.csv*
+ 
